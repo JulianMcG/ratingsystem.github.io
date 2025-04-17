@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rating System Hub</title>
+    <title>Rating System 1</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500&display=swap" rel="stylesheet">
@@ -107,8 +107,8 @@
 </head>
 <body>
     <div class="embed-container">
-        <div class="title">Title</div>
-        <div class="description">Lorem ipsum dolor sit amet</div>
+        <div class="title">Rating System 1</div>
+        <div class="description">First rating system</div>
         <div class="rating-icons">
             <span id="thumbUpIcon" class="material-symbols-outlined icon">thumb_up</span>
             <span id="percentageDisplay" class="percentage">0%</span>
@@ -129,10 +129,10 @@
             
             // Generate a unique user ID if not already present
             const getUserId = () => {
-                let userId = localStorage.getItem('ratingSystemUserId');
+                let userId = localStorage.getItem('ratingSystemUserId_system1');
                 if (!userId) {
                     userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                    localStorage.setItem('ratingSystemUserId', userId);
+                    localStorage.setItem('ratingSystemUserId_system1', userId);
                 }
                 return userId;
             };
@@ -140,21 +140,32 @@
             const userId = getUserId();
             
             // Initialize Firebase
-            const firebaseConfig = {
-                // Replace with your actual Firebase config from your project settings
-                apiKey: "AIzaSyDX-SzfcCYmHH6waadckLZlLgPMv3QH6Ew",
-                authDomain: "rating-system-c5146.firebaseapp.com",
-                databaseURL: "https://rating-system-c5146-default-rtdb.firebaseio.com",
-                projectId: "rating-system-c5146",
-                storageBucket: "rating-system-c5146.appspot.com",
-                messagingSenderId: "125040452451",
-                appId: "1:125040452451:web:f62427fa3afaa498d3e956"
-            };
+            let firebaseApp;
+            try {
+                // Try to get existing Firebase app
+                firebaseApp = firebase.app();
+                console.log("Using existing Firebase app in rating1");
+            } catch (e) {
+                // Initialize Firebase if not already initialized
+                console.log("Initializing new Firebase app in rating1");
+                const firebaseConfig = {
+                    apiKey: "AIzaSyDX-SzfcCYmHH6waadckLZlLgPMv3QH6Ew",
+                    authDomain: "rating-system-c5146.firebaseapp.com",
+                    databaseURL: "https://rating-system-c5146-default-rtdb.firebaseio.com",
+                    projectId: "rating-system-c5146",
+                    storageBucket: "rating-system-c5146.appspot.com",
+                    messagingSenderId: "125040452451",
+                    appId: "1:125040452451:web:f62427fa3afaa498d3e956"
+                };
+                
+                firebaseApp = firebase.initializeApp(firebaseConfig);
+            }
             
-            firebase.initializeApp(firebaseConfig);
             const database = firebase.database();
-            const ratingsRef = database.ref('ratings');
-            const userVotesRef = database.ref('userVotes');
+            const ratingsRef = database.ref('ratings/system1');
+            const userVotesRef = database.ref('userVotes/system1');
+            
+            console.log("Rating1 paths:", ratingsRef.toString(), userVotesRef.toString());
             
             // Function to update the percentage display
             function updatePercentage() {
@@ -168,6 +179,7 @@
             // Listen for changes in the database
             ratingsRef.on('value', (snapshot) => {
                 const data = snapshot.val() || { likes: 0, dislikes: 0 };
+                console.log("Rating1 - Database update received:", data);
                 likes = data.likes;
                 dislikes = data.dislikes;
                 updatePercentage();
@@ -177,6 +189,7 @@
             // Check if user has already voted
             userVotesRef.child(userId).once('value').then((snapshot) => {
                 const userVote = snapshot.val();
+                console.log("Rating1 - User vote check:", userVote);
                 if (userVote) {
                     if (userVote === 'like') {
                         thumbUpFilled = true;
@@ -189,16 +202,17 @@
                     }
                 }
             }).catch(error => {
-                console.error("Error checking user vote:", error);
+                console.error("Rating1 - Error checking user vote:", error);
             });
             
-            // Function to update ratings in Firebase
+            // Function to update ratings in Firebase using transaction
             function updateRating(action, previousAction) {
+                console.log("Rating1 - Updating rating:", action, "Previous:", previousAction);
                 ratingContainer.classList.add('loading');
                 
-                // Get current values first
-                ratingsRef.once('value').then((snapshot) => {
-                    const currentData = snapshot.val() || { likes: 0, dislikes: 0 };
+                ratingsRef.transaction((currentData) => {
+                    // Ensure we have a valid data object
+                    currentData = currentData || { likes: 0, dislikes: 0 };
                     
                     // Remove previous vote if exists
                     if (previousAction === 'like') {
@@ -209,24 +223,36 @@
                     
                     // Add new vote
                     if (action === 'like') {
-                        currentData.likes++;
-                        userVotesRef.child(userId).set('like');
+                        currentData.likes = (currentData.likes || 0) + 1;
                     } else if (action === 'dislike') {
-                        currentData.dislikes++;
-                        userVotesRef.child(userId).set('dislike');
-                    } else if (action === 'remove') {
-                        userVotesRef.child(userId).remove();
+                        currentData.dislikes = (currentData.dislikes || 0) + 1;
                     }
                     
-                    // Save to Firebase
-                    ratingsRef.set(currentData);
+                    console.log("Rating1 - Transaction data:", currentData);
+                    return currentData;
+                }).then((result) => {
+                    console.log("Rating1 - Transaction completed:", result);
+                    
+                    // Update user vote record
+                    if (action === 'like') {
+                        return userVotesRef.child(userId).set('like');
+                    } else if (action === 'dislike') {
+                        return userVotesRef.child(userId).set('dislike');
+                    } else if (action === 'remove') {
+                        return userVotesRef.child(userId).remove();
+                    }
+                }).then(() => {
+                    console.log("Rating1 - User vote updated");
+                    ratingContainer.classList.remove('loading');
                 }).catch(error => {
-                    console.error("Error updating rating:", error);
+                    console.error("Rating1 - Error updating rating:", error);
                     ratingContainer.classList.remove('loading');
                 });
             }
             
             thumbUpIcon.addEventListener('click', function() {
+                console.log("Rating1 - Thumb up clicked");
+                
                 // Toggle thumbs up
                 if (!thumbUpFilled) {
                     // Adding a like
@@ -258,6 +284,8 @@
             });
             
             thumbDownIcon.addEventListener('click', function() {
+                console.log("Rating1 - Thumb down clicked");
+                
                 // Toggle thumbs down
                 if (!thumbDownFilled) {
                     // Adding a dislike
