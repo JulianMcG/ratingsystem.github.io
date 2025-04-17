@@ -98,6 +98,11 @@
             opacity: 0.5;
             pointer-events: none;
         }
+
+        .disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -122,21 +127,34 @@
             let likes = 0;
             let dislikes = 0;
             
+            // Generate a unique user ID if not already present
+            const getUserId = () => {
+                let userId = localStorage.getItem('ratingSystemUserId');
+                if (!userId) {
+                    userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                    localStorage.setItem('ratingSystemUserId', userId);
+                }
+                return userId;
+            };
+            
+            const userId = getUserId();
+            
             // Initialize Firebase
             const firebaseConfig = {
-  apiKey: "AIzaSyDX-SzfcCYmHH6waadckLZlLgPMv3QH6Ew",
-  authDomain: "rating-system-c5146.firebaseapp.com",
-  databaseURL: "https://rating-system-c5146-default-rtdb.firebaseio.com",
-  projectId: "rating-system-c5146",
-  storageBucket: "rating-system-c5146.firebasestorage.app",
-  messagingSenderId: "125040452451",
-  appId: "1:125040452451:web:f62427fa3afaa498d3e956",
-  measurementId: "G-38XX4W1QBM"
-};
+                // Replace with your actual Firebase config from your project settings
+                apiKey: "YOUR_API_KEY",
+                authDomain: "rating-system-c5146.firebaseapp.com",
+                databaseURL: "https://rating-system-c5146-default-rtdb.firebaseio.com",
+                projectId: "rating-system-c5146",
+                storageBucket: "rating-system-c5146.appspot.com",
+                messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+                appId: "YOUR_APP_ID"
+            };
             
             firebase.initializeApp(firebaseConfig);
             const database = firebase.database();
             const ratingsRef = database.ref('ratings');
+            const userVotesRef = database.ref('userVotes');
             
             // Function to update the percentage display
             function updatePercentage() {
@@ -156,23 +174,48 @@
                 ratingContainer.classList.remove('loading');
             });
             
+            // Check if user has already voted
+            userVotesRef.child(userId).once('value').then((snapshot) => {
+                const userVote = snapshot.val();
+                if (userVote) {
+                    if (userVote === 'like') {
+                        thumbUpFilled = true;
+                        thumbUpIcon.style.fontVariationSettings = "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24";
+                        thumbUpIcon.style.color = "#ecebf7";
+                    } else if (userVote === 'dislike') {
+                        thumbDownFilled = true;
+                        thumbDownIcon.style.fontVariationSettings = "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24";
+                        thumbDownIcon.style.color = "#ecebf7";
+                    }
+                }
+            }).catch(error => {
+                console.error("Error checking user vote:", error);
+            });
+            
             // Function to update ratings in Firebase
-            function updateRating(action) {
+            function updateRating(action, previousAction) {
                 ratingContainer.classList.add('loading');
                 
                 // Get current values first
                 ratingsRef.once('value').then((snapshot) => {
                     const currentData = snapshot.val() || { likes: 0, dislikes: 0 };
                     
-                    // Update based on action
+                    // Remove previous vote if exists
+                    if (previousAction === 'like') {
+                        currentData.likes = Math.max(0, currentData.likes - 1);
+                    } else if (previousAction === 'dislike') {
+                        currentData.dislikes = Math.max(0, currentData.dislikes - 1);
+                    }
+                    
+                    // Add new vote
                     if (action === 'like') {
                         currentData.likes++;
-                    } else if (action === 'unlike') {
-                        currentData.likes = Math.max(0, currentData.likes - 1);
+                        userVotesRef.child(userId).set('like');
                     } else if (action === 'dislike') {
                         currentData.dislikes++;
-                    } else if (action === 'undislike') {
-                        currentData.dislikes = Math.max(0, currentData.dislikes - 1);
+                        userVotesRef.child(userId).set('dislike');
+                    } else if (action === 'remove') {
+                        userVotesRef.child(userId).remove();
                     }
                     
                     // Save to Firebase
@@ -182,23 +225,6 @@
                     ratingContainer.classList.remove('loading');
                 });
             }
-            
-            // Check if user has already voted (using localStorage)
-            const checkUserVote = () => {
-                const userVote = localStorage.getItem('userRatingVote');
-                if (userVote === 'like') {
-                    thumbUpFilled = true;
-                    thumbUpIcon.style.fontVariationSettings = "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24";
-                    thumbUpIcon.style.color = "#ecebf7";
-                } else if (userVote === 'dislike') {
-                    thumbDownFilled = true;
-                    thumbDownIcon.style.fontVariationSettings = "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24";
-                    thumbDownIcon.style.color = "#ecebf7";
-                }
-            };
-            
-            // Call this function when the page loads
-            checkUserVote();
             
             thumbUpIcon.addEventListener('click', function() {
                 // Toggle thumbs up
@@ -214,11 +240,10 @@
                         thumbDownFilled = false;
                         thumbDownIcon.style.fontVariationSettings = "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24";
                         thumbDownIcon.style.color = "#b6b8c8"; // Reset to description color
-                        updateRating('undislike');
+                        updateRating('like', 'dislike');
+                    } else {
+                        updateRating('like', null);
                     }
-                    
-                    updateRating('like');
-                    localStorage.setItem('userRatingVote', 'like');
                     
                     setTimeout(() => {
                         thumbUpIcon.classList.remove('animate');
@@ -228,8 +253,7 @@
                     thumbUpFilled = false;
                     thumbUpIcon.style.fontVariationSettings = "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24";
                     thumbUpIcon.style.color = "#b6b8c8"; // Reset to description color
-                    updateRating('unlike');
-                    localStorage.removeItem('userRatingVote');
+                    updateRating('remove', 'like');
                 }
             });
             
@@ -247,11 +271,10 @@
                         thumbUpFilled = false;
                         thumbUpIcon.style.fontVariationSettings = "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24";
                         thumbUpIcon.style.color = "#b6b8c8"; // Reset to description color
-                        updateRating('unlike');
+                        updateRating('dislike', 'like');
+                    } else {
+                        updateRating('dislike', null);
                     }
-                    
-                    updateRating('dislike');
-                    localStorage.setItem('userRatingVote', 'dislike');
                     
                     setTimeout(() => {
                         thumbDownIcon.classList.remove('animate');
@@ -261,8 +284,7 @@
                     thumbDownFilled = false;
                     thumbDownIcon.style.fontVariationSettings = "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24";
                     thumbDownIcon.style.color = "#b6b8c8"; // Reset to description color
-                    updateRating('undislike');
-                    localStorage.removeItem('userRatingVote');
+                    updateRating('remove', 'dislike');
                 }
             });
         });
